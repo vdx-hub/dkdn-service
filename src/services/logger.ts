@@ -1,18 +1,20 @@
-import { transports, createLogger, format, config } from 'winston';
-import 'winston-daily-rotate-file';
-const { timestamp, label, printf, errors } = format;
-import path from 'path'
-var logDir = 'logs'; // directory path you want to set
+import 'winston-daily-rotate-file'
+import path from 'node:path'
+import { config, createLogger, format, transports } from 'winston'
+
+const { timestamp, label, printf, errors } = format
+
+const logDir = process.env.LOGS_PATH || 'logs'
 
 const myFormat = printf(({ level, message, label, timestamp }) => {
-  return `${timestamp} [${label}] ${level}: ${message}`;
-});
-const timezoned = () => {
+  return `${timestamp} [${label}] ${level}: ${message}`
+})
+function timezoned() {
   return new Date().toLocaleString('vi', {
-    timeZone: 'Asia/Ho_Chi_Minh'
-  });
+    timeZone: 'Asia/Ho_Chi_Minh',
+  })
 }
-var transportErr = new (transports.DailyRotateFile)({
+const transportErr = new (transports.DailyRotateFile)({
   filename: path.join(logDir, 'error-%DATE%.log'),
   datePattern: 'YYYY-MM-DD',
   zippedArchive: true,
@@ -21,11 +23,11 @@ var transportErr = new (transports.DailyRotateFile)({
   maxFiles: '30d',
   format: format.combine(
     format.colorize(),
-    myFormat
-  )
-});
+    myFormat,
+  ),
+})
 
-var transportCombine = new (transports.DailyRotateFile)({
+const transportCombine = new (transports.DailyRotateFile)({
   filename: path.join(logDir, 'combined-%DATE%.log'),
   datePattern: 'YYYY-MM-DD',
   zippedArchive: true,
@@ -33,11 +35,11 @@ var transportCombine = new (transports.DailyRotateFile)({
   maxFiles: '30d',
   format: format.combine(
     format.colorize(),
-    myFormat
-  )
-});
+    myFormat,
+  ),
+})
 
-var transportAction = new (transports.DailyRotateFile)({
+const transportAction = new (transports.DailyRotateFile)({
   filename: path.join(logDir, 'action-%DATE%.log'),
   datePattern: 'YYYY-MM-DD',
   zippedArchive: true,
@@ -46,16 +48,16 @@ var transportAction = new (transports.DailyRotateFile)({
   maxFiles: '30d',
   format: format.combine(
     format.colorize(),
-    myFormat
-  )
-});
+    myFormat,
+  ),
+})
 
-var transportConsole = new (transports.Console)({
+const transportConsole = new (transports.Console)({
   format: format.combine(
     format.colorize(),
-    myFormat
-  )
-});
+    myFormat,
+  ),
+})
 
 const actionLog = createLogger({
   levels: config.syslog.levels,
@@ -69,21 +71,21 @@ const actionLog = createLogger({
   transports: [
     transportAction,
     transportConsole,
-  ]
+  ],
 })
-
 
 const transportMethod: any = [
   transportErr,
   transportCombine,
 ]
-if (process.env.NODE_ENV !== 'production') {
-  transportMethod.push(transportConsole);
-}
+if (process.env.NODE_ENV !== 'production')
+  transportMethod.push(transportConsole)
 
 const loggerTmp: any = {}
-const logger = (labelValue = '') => {
-  if (loggerTmp[labelValue]) return loggerTmp[labelValue]
+function logger(labelValue = '') {
+  if (loggerTmp[labelValue]) {
+    return loggerTmp[labelValue]
+  }
   else {
     loggerTmp[labelValue] = createLogger({
       levels: config.syslog.levels,
@@ -98,6 +100,6 @@ const logger = (labelValue = '') => {
     })
     return loggerTmp[labelValue]
   }
-};
+}
 
 export { logger, actionLog }

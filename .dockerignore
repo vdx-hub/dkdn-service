@@ -3,6 +3,5 @@ logs/*
 static/*
 assets/*
 node_modules/*
-package-lock.json
 uploads/*
 tmp/*
