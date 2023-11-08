@@ -13,4 +13,4 @@ COPY ./src ./src
 # RUN npm install nodemon && npm install
 
 # CMD npm run start
-CMD npm run dev
+CMD pnpm run dev

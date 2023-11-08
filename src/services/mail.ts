@@ -1,8 +1,35 @@
 import nodemailer from 'nodemailer'
 import handlebars from 'handlebars'
+import { _client } from '@db/mongodb'
+import type SMTPTransport from 'nodemailer/lib/smtp-transport'
+import { actionLog } from './logger'
+import { vuejx } from './vuejx-core'
 
-const databaseName = process.env.DATABASE_NAME
-const mailTemplateCollection = process.env.MAIL_TEMPLATE_COLLECTION
+interface Response {
+  status: number
+  msg: string
+  res?: any
+}
+
+export interface MailQueue {
+  mailTo: string
+  mailFrom: string
+  mailSubject: string
+  mailTemplate: SourceTemplate
+  mailTemplateData: any
+  isSent: boolean
+  isFail: boolean
+  failMessage: string
+}
+interface SourceTemplate {
+  _source: MailTemplate
+}
+interface MailTemplate {
+  MaMuc: string
+  TenMuc: string
+  templateData: string
+}
+
 const systemMail = process.env.SYSTEM_MAIL
 const systemMailPass = process.env.SYSTEM_MAIL_PASS
 
@@ -14,159 +41,164 @@ const transporter = nodemailer.createTransport({
   },
 })
 
-async function renderHTMLfromTemplateWithData(source, data) {
-  const template = await handlebars.compile(source)
-  return await template(data)
+function renderHTMLfromTemplateWithData(source, data) {
+  const template = handlebars.compile(source)
+  return template(data)
 }
 
-async function getTemplate(client, templateName, db) {
-  const templateRecord = await client.db(db || databaseName).collection(mailTemplateCollection).findOne({
-    MaMuc: templateName,
+function validateMail(mail: string) {
+  const emailRegex = /\w+@\w+\.[a-zA-Z_]+?$|\w+@\w+\.[a-zA-Z_]+?\.[a-zA-Z_]+?$|\w+@\w+-\w+\.[a-zA-Z_]+?$|\w+@\w+-\w+\.[a-zA-Z_]+?\.[a-zA-Z_]+?$/
+  return !!mail.match(emailRegex)
+}
+
+export async function prepareDBMail({ db, site, templateCollection = 'C_EmailTemplate', collectionQueue = 'T_EmailQueue', token }) {
+  _client.db(db).collection(templateCollection)
+  _client.db(db).collection(collectionQueue)
+  const adminVuejx = vuejx(db, site, token)
+
+  // templateCollection
+  const collectionTemplateExists = await _client.db(db).collection('vuejx_collection').findOne({
+    shortName: templateCollection,
   })
-  return templateRecord && templateRecord.templateData
-}
+  if (!collectionTemplateExists) {
+    const res = await adminVuejx.processDb('vuejx_collection', {
+      MaMuc: templateCollection,
+      shortName: templateCollection,
+      TenMuc: templateCollection,
+      title: templateCollection,
+      cfg_mapping: `{"properties":{"MaMuc":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256,"normalizer":"lowercase_normalizer"},"raw":{"type":"text","analyzer":"nfd_normalized"}}},"TenMuc":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256,"normalizer":"lowercase_normalizer"},"raw":{"type":"text","analyzer":"nfd_normalized"}}}}}`,
+    })
+    actionLog.info(JSON.stringify(res))
+  }
 
-async function sendMail(client, { db, from, to, subject, templateName, data }) {
-  const template = await getTemplate(client, templateName, db)
-  if (!template)
-    return 'Fail to get template'
-  const htmlToSend = await renderHTMLfromTemplateWithData(template, data)
-  // console.log(htmlToSend);
-  const mailOption = {
-    from: `${from || 'Trung tâm TTDLMT'} <${systemMail}>`,
-    // from: `${from} <${systemMail}>`,
-    to, // "bar@example.com, baz@example.com"
-    subject, // "Hello ✔" Subject line
-    html: htmlToSend, // html body
-  }
-  let info
-  try {
-    info = await transporter.sendMail(mailOption)
-  }
-  catch (e) {
-    console.log(e)
-  }
-  return info
-}
-
-async function autoSendT_EmailToSend(client) {
-  const myCursor = await client.db(databaseName).collection('T_EmailToSend').find({
-    $and: [
-      { isSent: false },
-      { isFail: { $ne: true } },
-    ],
+  // collectionQueue
+  const collectionQueueExists = await _client.db(db).collection('vuejx_collection').findOne({
+    shortName: collectionQueue,
   })
-  let count = 0
-  let fail = 0
-  while (await myCursor.hasNext()) {
-    const mail = await myCursor.next()
-    if (mail.mailTo?.indexOf('@') > -1 && mail.mailTemplate && mail.mailTemplateData) {
-      const sentStatus = await sendMail(client, {
-        db: databaseName,
-        from: mail.mailFrom,
-        to: mail.mailTo, // single mail !!! multiple => fix check success
-        subject: mail.mailSubject,
-        templateName: mail.mailTemplate._source.MaMuc,
-        data: mail.mailTemplateData,
-      })
-      if (sentStatus?.accepted && sentStatus?.accepted.indexOf(mail.mailTo) > -1) {
-        // mail success
-        await client.db(databaseName).collection('T_EmailToSend').updateOne({
-          _id: mail._id,
-        }, {
-          $set: {
-            isSent: true,
-          },
-        })
-        count++
+  if (!collectionQueueExists) {
+    const res = await adminVuejx.processDb('vuejx_collection', {
+      MaMuc: collectionQueue,
+      shortName: collectionQueue,
+      TenMuc: collectionQueue,
+      title: collectionQueue,
+      cfg_mapping: `{"properties":{"mailFrom":{"type":"keyword"},"mailTo":{"type":"keyword"},"mailSubject":{"type":"keyword"},"mailTemplate":{"properties":{"_source":{"properties":{"MaMuc":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256,"normalizer":"lowercase_normalizer"},"raw":{"type":"text","analyzer":"nfd_normalized"}}},"TenMuc":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256,"normalizer":"lowercase_normalizer"},"raw":{"type":"text","analyzer":"nfd_normalized"}}}}}}},"mailTemplateData":{"type":"text"}}}`,
+    })
+    actionLog.info(JSON.stringify(res))
+  }
+}
+
+export function createEmailInstance({ db, templateCollection = 'C_EmailTemplate', collectionQueue = 'T_EmailQueue' }) {
+  async function sendMail({ from, to, subject, templateName, data }) {
+    let res: Response = {
+      status: 500,
+      msg: 'Lỗi không xác định',
+    }
+
+    const template = await getTemplate({ MaMuc: templateName })
+    if (!template) {
+      res = {
+        status: 400,
+        msg: 'Không tìm thấy template',
       }
-      else {
-        await client.db(databaseName).collection('T_EmailToSend').updateOne({
+      return res
+    }
+
+    const htmlToSend = renderHTMLfromTemplateWithData(template, data)
+    const mailOption = {
+      from: `${from || 'Hệ thống'} <${systemMail}>`,
+      to, // "bar@example.com, baz@example.com"
+      subject, // "Hello ✔" Subject line
+      html: htmlToSend, // html body
+    }
+    const info = await transporter.sendMail(mailOption)
+    if (!info?.accepted) {
+      res = {
+        status: 500,
+        msg: 'Gửi email thất bại',
+        res: info,
+      }
+    }
+    res = {
+      status: 200,
+      msg: 'Thành công',
+      res: info,
+    }
+    return res
+  }
+
+  async function getTemplate(filter) {
+    const templateRecord = await _client.db(db).collection(templateCollection).findOne(filter)
+    return templateRecord && templateRecord.templateData
+  }
+
+  async function autoSendMail() {
+    const myCursor = _client.db(db).collection(collectionQueue).find({
+      $and: [
+        { isSent: false },
+        { isFail: { $ne: true } },
+      ],
+    })
+    let successCount = 0
+    let failCount = 0
+    while (await myCursor.hasNext()) {
+      const mail = await myCursor.next()
+      if (!mail)
+        continue
+
+      if (!validateMail(mail.mailTo)) {
+        await _client.db(db).collection(collectionQueue).updateOne({
           _id: mail._id,
         }, {
           $set: {
             isFail: true,
+            failMessage: 'mailTo không phải email',
           },
         })
-        fail++
+        failCount++
+        return
       }
-    }
-    else {
-      await client.db(databaseName).collection('T_EmailToSend').updateOne({
-        _id: mail._id,
-      }, {
-        $set: {
-          isFail: true,
-        },
-      })
-      fail++
-    }
-  }
-  return (count > 0 || fail > 0)
-    ? {
-        success: `Successfully Sent ${count} mail(s)`,
-        fail: `Fail to send ${fail} mail(s)`,
-      }
-    : ''
-}
 
-async function autoSendMail(client, db) {
-  const myCursor = await client.db(db).collection('T_EmailToSend').find({
-    $and: [
-      { isSent: false },
-      { isFail: { $ne: true } },
-    ],
-  })
-  let count = 0
-  let fail = 0
-  while (await myCursor.hasNext()) {
-    const mail = await myCursor.next()
-    if (mail.mailTo.includes('@')) {
-      const sentStatus = await sendMail(client, {
-        db,
+      const sentStatus: Response | SMTPTransport.SentMessageInfo = await sendMail({
         from: mail.mailFrom || 'System',
         to: mail.mailTo, // single mail !!! multiple => fix check success
         subject: mail.mailSubject,
         templateName: mail.mailTemplate._source.MaMuc,
         data: mail.mailTemplateData,
       })
-      if (sentStatus?.accepted && sentStatus?.accepted.indexOf(mail.mailTo) > -1) {
-        // mail success
-        await client.db(db).collection('T_EmailToSend').updateOne({
+      if (sentStatus?.status === 200) {
+        await _client.db(db).collection('T_EmailToSend').updateOne({
           _id: mail._id,
         }, {
           $set: {
             isSent: true,
+            info: sentStatus.res,
           },
         })
-        count++
+        successCount++
       }
       else {
-        await client.db(db).collection('T_EmailToSend').updateOne({
+        await _client.db(db).collection('T_EmailToSend').updateOne({
           _id: mail._id,
         }, {
           $set: {
             isFail: true,
+            failMessage: sentStatus.msg,
+            ...sentStatus.res ? { info: sentStatus.res } : {},
           },
         })
-        fail++
+        failCount++
       }
     }
-    else {
-      await client.db(db).collection('T_EmailToSend').updateOne({
-        _id: mail._id,
-      }, {
-        $set: {
-          isFail: true,
-        },
-      })
-      fail++
+    if (successCount || failCount > 0) {
+      return {
+        ...successCount > 0 ? { success: `Successfully Sent ${successCount} mail(s)` } : {},
+        ...failCount > 0 ? { fail: `Fail to Sent ${failCount} mail(s)` } : {},
+      }
     }
   }
-  return (count > 0 || fail > 0)
-    ? {
-        success: `Successfully Sent ${count} mail(s)`,
-        fail: `Fail to send ${fail} mail(s)`,
-      }
-    : ''
+  return {
+    sendMail,
+    getTemplate,
+    autoSendMail,
+  }
 }

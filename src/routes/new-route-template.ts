@@ -21,7 +21,9 @@ const upload = multer({
     cb(null, true)
   },
 })
-export const mailRouter = express.Router()
-mailRouter.post('/ping', upload.single('file'), async (_req, res) => {
+
+export const routerName = express.Router()
+
+routerName.post('/upload', upload.single('file'), async (_req, res) => {
   res.status(200).send('Service is up and running!')
 })

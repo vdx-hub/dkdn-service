@@ -5,7 +5,9 @@ import express from 'express'
 
 import { mailRouter } from '@routes/index'
 import { ensureDir } from 'fs-extra'
-import { logger } from '@services/logger'
+import { actionLog, logger } from '@services/logger'
+import * as cron from 'node-cron'
+import { createEmailInstance } from '@services/mail'
 
 https.globalAgent.options.rejectUnauthorized = false
 
@@ -20,19 +22,21 @@ app.use(
     parameterLimit: 50000,
   }),
 )
-app.use((err: any, _req: any, res: any, _next: any) => {
-  res.status(err.status || 500)
-  res.json({
-    message: err.message,
-    error: err,
-  })
-})
-ensureDir('./logs/')
-ensureDir('./uploads/file/')
-ensureDir('./uploads/tepdinhkem/')
 
 // Route
 app.use(mailRouter)
+ensureDir('./logs/')
+
+// Cron
+const mailDKDN = createEmailInstance({
+  db: 'CSDL_DKDN',
+  collectionQueue: 'T_EmailQueue',
+  templateCollection: 'C_EmailTemplate',
+})
+cron.schedule('* * * * *', async () => {
+  const res = await mailDKDN.autoSendMail()
+  res && actionLog.info(JSON.stringify(res))
+})
 
 app.listen(9000, async () => {
   logger('startup').info('Server is up! http://0.0.0.0:9000')

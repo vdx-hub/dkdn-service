@@ -1,6 +1,6 @@
 import { requestVuejx } from '@controller/vuejx'
 
-export function vuejx(db, site, token) {
+export function vuejx(db: string, site: string, token?: string) {
   const mappedQuery = {
     userUpdateById: `mutation UserUpdateById($collection: String, $body: JSON) {
       userUpdateById(collection: $collection, body: $body)
@@ -9,13 +9,13 @@ export function vuejx(db, site, token) {
   }
 
   return {
-    userUpdateById: async (collection, body) => {
+    userUpdateById: async (collection: string, body) => {
       return await requestVuejx(mappedQuery.userUpdateById, {
         collection,
         body,
       }, db, site, token)
     },
-    processDb: async (collection, body, filter?, sort?, skip?) => {
+    processDb: async (collection: string, body, filter?, sort?, skip?) => {
       let queryProcess: any = null
       let processDB: any = null
       if (body._id && !filter) {
