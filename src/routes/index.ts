@@ -1,1 +1,1 @@
-export * from './mail-router.js'
+export * from './mail-router'
