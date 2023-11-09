@@ -94,11 +94,19 @@ export function createEmailInstance({ db, templateCollection = 'C_EmailTemplate'
       msg: 'Lỗi không xác định',
     }
 
+    if (!validateMail(to)) {
+      res = {
+        status: 400,
+        msg: 'Mail không hợp lệ',
+      }
+      return res
+    }
+
     const template = await getTemplate({ MaMuc: templateName })
     if (!template) {
       res = {
         status: 400,
-        msg: 'Không tìm thấy template',
+        msg: 'Không tìm thấy mẫu mail',
       }
       return res
     }
@@ -106,7 +114,7 @@ export function createEmailInstance({ db, templateCollection = 'C_EmailTemplate'
     const htmlToSend = renderHTMLfromTemplateWithData(template, data)
     const mailOption = {
       from: `${from || 'Hệ thống'} <${systemMail}>`,
-      to, // "bar@example.com, baz@example.com"
+      to, // "bar@example.com
       subject, // "Hello ✔" Subject line
       html: htmlToSend, // html body
     }
@@ -131,11 +139,12 @@ export function createEmailInstance({ db, templateCollection = 'C_EmailTemplate'
     return templateRecord && templateRecord.templateData
   }
 
-  async function autoSendMail() {
+  async function autoSendMail(filter) {
     const myCursor = _client.db(db).collection(collectionQueue).find({
       $and: [
         { isSent: false },
         { isFail: { $ne: true } },
+        ...filter,
       ],
     })
     let successCount = 0
@@ -144,19 +153,6 @@ export function createEmailInstance({ db, templateCollection = 'C_EmailTemplate'
       const mail = await myCursor.next()
       if (!mail)
         continue
-
-      if (!validateMail(mail.mailTo)) {
-        await _client.db(db).collection(collectionQueue).updateOne({
-          _id: mail._id,
-        }, {
-          $set: {
-            isFail: true,
-            failMessage: 'mailTo không phải email',
-          },
-        })
-        failCount++
-        return
-      }
 
       const sentStatus: Response | SMTPTransport.SentMessageInfo = await sendMail({
         from: mail.mailFrom || 'System',

@@ -2,7 +2,7 @@ import express from 'express'
 import type { MailQueue } from '@services/mail'
 import { createEmailInstance, prepareDBMail } from '@services/mail'
 import { authCheck } from 'utils/jwt'
-import { logger } from '@services/logger'
+import { actionLog, logger } from '@services/logger'
 import { vuejx } from '@services/vuejx-core'
 
 export const mailRouter = express.Router()
@@ -73,13 +73,14 @@ mailRouter.post('/send_mail', async (req, res, next) => {
       templateName,
       data,
     })
-    res.status(200).send(sendMailResponse)
+    res.status(sendMailResponse.status).send(sendMailResponse)
     let sentStatusData
     if (sendMailResponse?.status === 200) {
       sentStatusData = {
         isSent: true,
         info: sendMailResponse.res,
       }
+      actionLog.info(`Send email to ${to} success`)
     }
     else {
       sentStatusData = {
@@ -87,6 +88,7 @@ mailRouter.post('/send_mail', async (req, res, next) => {
         failMessage: sendMailResponse.msg,
         ...sendMailResponse.res ? { info: sendMailResponse.res } : {},
       }
+      actionLog.info(`Send email to ${to} failed`)
     }
     // create T_EmailQueue as logs
     await adminVuejx.processDb(collectionQueue || 'T_EmailQueue', {

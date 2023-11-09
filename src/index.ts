@@ -34,7 +34,7 @@ const mailDKDN = createEmailInstance({
   templateCollection: 'C_EmailTemplate',
 })
 cron.schedule('* * * * *', async () => {
-  const res = await mailDKDN.autoSendMail()
+  const res = await mailDKDN.autoSendMail(process.env.HOST_IP_SERVICE ? [{ HOST_IP_SERVICE: process.env.HOST_IP_SERVICE }] : [])
   res && actionLog.info(JSON.stringify(res))
 })
 
