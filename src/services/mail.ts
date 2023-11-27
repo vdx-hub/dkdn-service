@@ -4,6 +4,7 @@ import { _client } from '@db/mongodb'
 import type SMTPTransport from 'nodemailer/lib/smtp-transport'
 import { actionLog } from './logger'
 import { vuejx } from './vuejx-core'
+import pageDanhMucMauIn from './page/danh_muc_mau_email'
 
 interface Response {
   status: number
@@ -82,6 +83,17 @@ export async function prepareDBMail({ db, site, templateCollection = 'C_EmailTem
       TenMuc: collectionQueue,
       title: collectionQueue,
       cfg_mapping: `{"properties":{"mailFrom":{"type":"keyword"},"mailTo":{"type":"keyword"},"mailSubject":{"type":"keyword"},"mailTemplate":{"properties":{"_source":{"properties":{"MaMuc":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256,"normalizer":"lowercase_normalizer"},"raw":{"type":"text","analyzer":"nfd_normalized"}}},"TenMuc":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256,"normalizer":"lowercase_normalizer"},"raw":{"type":"text","analyzer":"nfd_normalized"}}}}}}},"mailTemplateData":{"type":"text"}}}`,
+    })
+    actionLog.info(JSON.stringify(res))
+  }
+
+  const pageEmailTemplateAdmin = await _client.db(db).collection('vuejx_page').findOne({
+    shortName: 'danh_muc_mau_email',
+  })
+  if (!pageEmailTemplateAdmin) {
+    const res = await adminVuejx.processDb('vuejx_collection', {
+      ...pageDanhMucMauIn,
+      site
     })
     actionLog.info(JSON.stringify(res))
   }

@@ -37,7 +37,9 @@ cron.schedule('* * * * *', async () => {
   const res = await mailDKDN.autoSendMail(process.env.HOST_IP_SERVICE ? [{ HOST_IP_SERVICE: process.env.HOST_IP_SERVICE }] : [])
   res && actionLog.info(JSON.stringify(res))
 })
-
+app.get('/ping', (req, res) => {
+  res.status(200).send('Service is up and running!')
+})
 app.listen(9000, async () => {
   logger('startup').info('Server is up! http://0.0.0.0:9000')
 })

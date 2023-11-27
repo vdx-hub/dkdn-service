@@ -7,10 +7,6 @@ import { vuejx } from '@services/vuejx-core'
 
 export const mailRouter = express.Router()
 
-mailRouter.post('/ping', async (_req, res) => {
-  res.status(200).send('Service is up and running!')
-})
-
 mailRouter.post('/init_service', async (req, res, next) => {
   // auth
   const token = req.header('token')
