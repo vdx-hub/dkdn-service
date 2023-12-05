@@ -1,7 +1,7 @@
 import express from 'express'
 import type { MailQueue } from '@services/mail'
 import { createEmailInstance, prepareDBMail } from '@services/mail'
-import { authCheck } from 'utils/jwt'
+import { authCheck, validateAPIkey } from 'utils/jwt'
 import { actionLog, logger } from '@services/logger'
 import { vuejx } from '@services/vuejx-core'
 
@@ -41,10 +41,19 @@ mailRouter.post('/init_service', async (req, res, next) => {
 mailRouter.post('/send_mail', async (req, res, next) => {
   // auth
   const token = req.header('token')
+  const apiKey = req.header('apiKey')
+
   if (!token) {
-    res.status(403).send('Unauthenticated!')
-    return
+    if (!apiKey) {
+      res.status(403).send('Unauthenticated!')
+      return
+    }
+    else if (!validateAPIkey(apiKey)) {
+      res.status(403).send('Unauthenticated!')
+      return
+    }
   }
+
   if (!(await authCheck(token, next))) {
     res.status(403).send('Token invalid!')
     return

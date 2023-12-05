@@ -49,7 +49,7 @@ function renderHTMLfromTemplateWithData(source, data) {
 
 function validateMail(mail: string) {
   const emailRegex = /\w+@\w+\.[a-zA-Z_]+?$|\w+@\w+\.[a-zA-Z_]+?\.[a-zA-Z_]+?$|\w+@\w+-\w+\.[a-zA-Z_]+?$|\w+@\w+-\w+\.[a-zA-Z_]+?\.[a-zA-Z_]+?$/
-  return !!mail.match(emailRegex)
+  return !!mail?.match(emailRegex)
 }
 
 export async function prepareDBMail({ db, site, templateCollection = 'C_EmailTemplate', collectionQueue = 'T_EmailQueue', token }) {
@@ -93,7 +93,7 @@ export async function prepareDBMail({ db, site, templateCollection = 'C_EmailTem
   if (!pageEmailTemplateAdmin) {
     const res = await adminVuejx.processDb('vuejx_collection', {
       ...pageDanhMucMauIn,
-      site
+      site,
     })
     actionLog.info(JSON.stringify(res))
   }
